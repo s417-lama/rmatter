@@ -61,6 +61,21 @@ private:
   std::condition_variable cond_;
 };
 
+void print_progress(double percent) {
+  const char* bar_str = "||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||";
+  int bar_width = std::strlen(bar_str);
+  int lpad = static_cast<int>(percent * bar_width);
+  int rpad = bar_width - lpad;
+  printf("\r[%.*s%*s] %3d%%", lpad, bar_str, rpad, "", static_cast<int>(percent * 100));
+  fflush(stdout);
+}
+
+void progress_complete() {
+  print_progress(1.0);
+  std::cout << std::endl;
+  fflush(stdout);
+}
+
 std::size_t get_available_memory_size() {
   long n_pages = sysconf(_SC_AVPHYS_PAGES);
   long page_size = sysconf(_SC_PAGE_SIZE);
@@ -158,7 +173,12 @@ void gen_rmat_parallel(uint64_t n, uint64_t m, double a, double b, double c, uin
   for (uint64_t i = 0; i < n_chunks; i++) {
     std::stringstream ss = queue.pop();
     out_stream << ss.rdbuf();
+
+    if (i % (n_chunks / 100 + 1) == 0) {
+      print_progress(static_cast<double>(i) / n_chunks);
+    }
   }
+  progress_complete();
 
   for (auto&& th : threads) {
     th.join();
