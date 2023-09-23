@@ -61,6 +61,12 @@ private:
   std::condition_variable cond_;
 };
 
+std::size_t get_available_memory_size() {
+  long n_pages = sysconf(_SC_AVPHYS_PAGES);
+  long page_size = sysconf(_SC_PAGE_SIZE);
+  return n_pages * page_size;
+}
+
 edge gen_rmat_elem(uint64_t index, uint64_t n, double a, double b, double c, uint64_t seed) {
   pcg32 rng(seed, index);
   std::uniform_real_distribution<double> dist(0, 1.0);
@@ -100,29 +106,45 @@ std::vector<edge> gen_rmat_range(uint64_t index_from, uint64_t index_to,
 }
 
 void gen_rmat_parallel(uint64_t n, uint64_t m, double a, double b, double c, uint64_t seed,
-                       int n_threads, const char* output_filename) {
+                       int n_threads, std::size_t mem_bound, const char* output_filename) {
   std::vector<std::thread> threads;
   concurrent_queue<std::stringstream> queue;
 
+  int n_vertex_digits = 0;
+  for (uint64_t ni = n; ni > 0; ni /= 10) {
+    n_vertex_digits++;
+  }
+
+  std::size_t max_edge_str_size = (n_vertex_digits * 2 + 2) * sizeof(char);
+
+  uint64_t chunk_edge_count =
+    std::max(1ul, std::min(m / (n_threads * 8),
+                           mem_bound / (n_threads * (sizeof(edge) + max_edge_str_size))));
+
+  std::cout << "Chunk size: " << chunk_edge_count << " edges" << std::endl;
+
+  uint64_t n_chunks = (m + chunk_edge_count - 1) / chunk_edge_count;
+
+  std::cout << "Number of chunks: " << n_chunks << std::endl;
+
   for (int i = 0; i < n_threads; i++) {
     threads.emplace_back([=, &queue] {
-      uint64_t index_from = ((m + n_threads - 1) / n_threads) * i;
-      uint64_t index_to   = std::min(((m + n_threads - 1) / n_threads) * (i + 1), m);
+      uint64_t chunk_index_from = (n_chunks * i + n_threads - 1) / n_threads;
+      uint64_t chunk_index_to   = std::min((n_chunks * (i + 1) + n_threads - 1) / n_threads, n_chunks);
 
-      if (index_to <= index_from) {
-        queue.push(std::stringstream{});
-        return;
+      for (uint64_t i = chunk_index_from; i < chunk_index_to; i++) {
+        uint64_t index_from = chunk_edge_count * i;
+        uint64_t index_to   = std::min(chunk_edge_count * (i + 1), m);
+        std::vector<edge> edges = gen_rmat_range(index_from, index_to,
+                                                 n, a, b, c, seed);
+
+        std::stringstream ss;
+        for (const auto& e : edges) {
+          ss << e << std::endl;
+        }
+
+        queue.push(std::move(ss));
       }
-
-      std::vector<edge> edges = gen_rmat_range(index_from, index_to,
-                                               n, a, b, c, seed);
-
-      std::stringstream ss;
-      for (const auto& e : edges) {
-        ss << e << std::endl;
-      }
-
-      queue.push(std::move(ss));
     });
   }
 
@@ -133,7 +155,7 @@ void gen_rmat_parallel(uint64_t n, uint64_t m, double a, double b, double c, uin
     exit(1);
   }
 
-  for (int i = 0; i < n_threads; i++) {
+  for (uint64_t i = 0; i < n_chunks; i++) {
     std::stringstream ss = queue.pop();
     out_stream << ss.rdbuf();
   }
@@ -153,6 +175,7 @@ void show_help_and_exit(int, char** argv) {
                   "    -c : Parameter c (default: 0.19)\n"
                   "    -r : Random seed (default: 0)\n"
                   "    -t : Number of threads\n"
+                  "    -s : Fraction of memory space usage (default: 0.8)\n"
                   "    -o : Output filename (default: out.txt)\n", argv[0]);
   exit(1);
 }
@@ -169,10 +192,12 @@ int main(int argc, char** argv) {
 
   int n_threads = std::thread::hardware_concurrency();
 
+  double mem_space_frac = 0.8;
+
   const char* output_filename = "out.txt";
 
   int opt;
-  while ((opt = getopt(argc, argv, "n:m:a:b:c:r:t:o:h")) != EOF) {
+  while ((opt = getopt(argc, argv, "n:m:a:b:c:r:t:s:o:h")) != EOF) {
     switch (opt) {
       case 'n':
         n = std::atoll(optarg);
@@ -194,6 +219,9 @@ int main(int argc, char** argv) {
         break;
       case 't':
         n_threads = std::atoi(optarg);
+        break;
+      case 's':
+        mem_space_frac = std::atof(optarg);
         break;
       case 'o':
         output_filename = optarg;
@@ -229,5 +257,20 @@ int main(int argc, char** argv) {
     exit(1);
   }
 
-  gen_rmat_parallel(n, m, a, b, c, seed, n_threads, output_filename);
+  std::size_t total_mem_size = get_available_memory_size();
+  std::size_t mem_bound = static_cast<std::size_t>(total_mem_size * mem_space_frac);
+
+  std::cout << "Generating an R-MAT graph with N = " << n << ", M = " << m << " ..." << std::endl;
+  std::cout << "Parameters: "
+            << "a = " << a << ", "
+            << "b = " << b << ", "
+            << "c = " << c << ", "
+            << "d = " << 1.0 - a - b - c << std::endl;
+  std::cout << "Random seed: " << seed << std::endl;
+  std::cout << n_threads << " threads will be spawned." << std::endl;
+  std::cout << static_cast<double>(mem_bound) / (1 << 30) << " GB of memory will be used." << std::endl;
+
+  gen_rmat_parallel(n, m, a, b, c, seed, n_threads, mem_bound, output_filename);
+
+  std::cout << "Done." << std::endl;
 }
