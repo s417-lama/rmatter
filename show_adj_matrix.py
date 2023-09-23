@@ -1,7 +1,8 @@
 import os
 import sys
 import webbrowser
-import numpy as np
+import dask.array as da
+import dask.dataframe as dd
 import plotly.graph_objects as go
 import plotly.express as px
 
@@ -13,13 +14,12 @@ input_file = sys.argv[1]
 
 max_cells = int(sys.argv[2]) if len(sys.argv) >= 3 else 1024
 
-edges = np.loadtxt(input_file, dtype=int)
+edges = dd.read_csv(input_file, header=None, sep="\s+", dtype=int).values
 
-n = np.max(edges) + 1
-
+n = edges.max().compute() + 1
 n_cells = min(n, max_cells)
 
-heatmap_data, _, _ = np.histogram2d(edges[:, 0], edges[:, 1], bins=n_cells, range=[[0, n-1], [0, n-1]])
+heatmap_data, _, _ = da.histogram2d(edges[:, 0], edges[:, 1], bins=n_cells, range=((0, n-1), (0, n-1)))
 
 colorscheme = px.colors.sequential.Magma
 colorscale = [[4**(-(len(colorscheme) - i - 1)), c] for i, c in enumerate(colorscheme)]
