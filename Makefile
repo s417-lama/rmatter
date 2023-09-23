@@ -6,7 +6,7 @@ SRC = rmatter.cpp
 all: $(TARGET)
 
 $(TARGET): $(SRC)
-	$(CXX) $(CXXFLAGS) -o $(TARGET) -I./pcg-cpp/include $(SRC)
+	$(CXX) $(CXXFLAGS) -o $(TARGET) -I./pcg-cpp/include $(SRC) -lpthread
 
 clean:
 	rm -f $(TARGET)

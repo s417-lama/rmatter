@@ -3,7 +3,10 @@
 #include <string>
 #include <sstream>
 #include <random>
+#include <queue>
 #include <thread>
+#include <mutex>
+#include <condition_variable>
 #include <cstdio>
 #include <cstdlib>
 #include <cstdint>
@@ -24,11 +27,39 @@ std::ostream& operator<<(std::ostream& stream, const edge& e) {
   return stream;
 }
 
-std::string thread_local_filename(const char* base_filename, int i) {
-  std::ostringstream os;
-  os << base_filename << "." << i;
-  return os.str();
-}
+template <typename T>
+class concurrent_queue {
+public:
+  void push(const T& item) {
+    queue_.push(item);
+  }
+
+  void push(T&& item) {
+    bool was_empty;
+    {
+      std::unique_lock<std::mutex> lock(mutex_);
+      was_empty = queue_.empty();
+      queue_.push(std::move(item));
+    }
+    if (was_empty) {
+      cond_.notify_one();
+    }
+  }
+
+  T pop() {
+    std::unique_lock<std::mutex> lock(mutex_);
+    cond_.wait(lock, [&] { return !queue_.empty(); });
+
+    T ret = std::move(queue_.front());
+    queue_.pop();
+    return ret;
+  }
+
+private:
+  std::queue<T>           queue_;
+  std::mutex              mutex_;
+  std::condition_variable cond_;
+};
 
 edge gen_rmat_elem(uint64_t index, uint64_t n, double a, double b, double c, uint64_t seed) {
   pcg32 rng(seed, index);
@@ -71,33 +102,28 @@ std::vector<edge> gen_rmat_range(uint64_t index_from, uint64_t index_to,
 void gen_rmat_parallel(uint64_t n, uint64_t m, double a, double b, double c, uint64_t seed,
                        int n_threads, const char* output_filename) {
   std::vector<std::thread> threads;
+  concurrent_queue<std::stringstream> queue;
 
   for (int i = 0; i < n_threads; i++) {
-    threads.emplace_back([=] {
+    threads.emplace_back([=, &queue] {
       uint64_t index_from = ((m + n_threads - 1) / n_threads) * i;
       uint64_t index_to   = std::min(((m + n_threads - 1) / n_threads) * (i + 1), m);
 
-      if (index_to <= index_from) return;
+      if (index_to <= index_from) {
+        queue.push(std::stringstream{});
+        return;
+      }
 
       std::vector<edge> edges = gen_rmat_range(index_from, index_to,
                                                n, a, b, c, seed);
 
-      std::string tl_filename = thread_local_filename(output_filename, i);
-      std::ofstream tl_stream(tl_filename);
-      if (!tl_stream) {
-        std::cerr << "Failed to open file: " << tl_filename << std::endl;
-        std::cerr << std::strerror(errno) << std::endl;
-        exit(1);
-      }
-
+      std::stringstream ss;
       for (const auto& e : edges) {
-        tl_stream << e << std::endl;
+        ss << e << std::endl;
       }
-    });
-  }
 
-  for (auto&& th : threads) {
-    th.join();
+      queue.push(std::move(ss));
+    });
   }
 
   std::ofstream out_stream(output_filename);
@@ -108,13 +134,12 @@ void gen_rmat_parallel(uint64_t n, uint64_t m, double a, double b, double c, uin
   }
 
   for (int i = 0; i < n_threads; i++) {
-    std::string tl_filename = thread_local_filename(output_filename, i);
-    std::ifstream tl_stream(tl_filename);
-    if (!tl_stream) continue;
+    std::stringstream ss = queue.pop();
+    out_stream << ss.rdbuf();
+  }
 
-    out_stream << tl_stream.rdbuf();
-
-    std::remove(tl_filename.c_str());
+  for (auto&& th : threads) {
+    th.join();
   }
 }
 
