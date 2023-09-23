@@ -3,6 +3,7 @@
 #include <string>
 #include <sstream>
 #include <random>
+#include <utility>
 #include <queue>
 #include <thread>
 #include <mutex>
@@ -57,6 +58,40 @@ public:
 
 private:
   std::queue<T>           queue_;
+  std::mutex              mutex_;
+  std::condition_variable cond_;
+};
+
+class memory_usage_bounder {
+public:
+  memory_usage_bounder(std::size_t max_bytes)
+    : max_bytes_(max_bytes), count_(max_bytes) {}
+
+  ~memory_usage_bounder() {
+    if (count_ != max_bytes_) {
+      std::cerr << "Something is wrong in memory_usage_bounder." << std::endl;
+    }
+  }
+
+  void acquire(std::size_t bytes) {
+    std::unique_lock<std::mutex> lock(mutex_);
+    cond_.wait(lock, [&] {
+      return bytes <= count_;
+    });
+    count_ -= bytes;
+  }
+
+  void release(std::size_t bytes) {
+    {
+      std::unique_lock<std::mutex> lock(mutex_);
+      count_ += bytes;
+    }
+    cond_.notify_all();
+  }
+
+private:
+  std::size_t             max_bytes_;
+  std::size_t             count_;
   std::mutex              mutex_;
   std::condition_variable cond_;
 };
@@ -123,7 +158,8 @@ std::vector<edge> gen_rmat_range(uint64_t index_from, uint64_t index_to,
 void gen_rmat_parallel(uint64_t n, uint64_t m, double a, double b, double c, uint64_t seed,
                        int n_threads, std::size_t mem_bound, const char* output_filename) {
   std::vector<std::thread> threads;
-  concurrent_queue<std::stringstream> queue;
+  concurrent_queue<std::pair<uint64_t, std::stringstream>> queue;
+  memory_usage_bounder mem_bounder(mem_bound);
 
   int n_vertex_digits = 0;
   for (uint64_t ni = n; ni > 0; ni /= 10) {
@@ -143,22 +179,31 @@ void gen_rmat_parallel(uint64_t n, uint64_t m, double a, double b, double c, uin
   std::cout << "Number of chunks: " << n_chunks << std::endl;
 
   for (int i = 0; i < n_threads; i++) {
-    threads.emplace_back([=, &queue] {
+    threads.emplace_back([=, &queue, &mem_bounder] {
       uint64_t chunk_index_from = (n_chunks * i + n_threads - 1) / n_threads;
       uint64_t chunk_index_to   = std::min((n_chunks * (i + 1) + n_threads - 1) / n_threads, n_chunks);
 
       for (uint64_t i = chunk_index_from; i < chunk_index_to; i++) {
         uint64_t index_from = chunk_edge_count * i;
         uint64_t index_to   = std::min(chunk_edge_count * (i + 1), m);
-        std::vector<edge> edges = gen_rmat_range(index_from, index_to,
-                                                 n, a, b, c, seed);
 
-        std::stringstream ss;
-        for (const auto& e : edges) {
-          ss << e << std::endl;
+        uint64_t n_edges = index_to - index_from;
+
+        mem_bounder.acquire(n_edges * (sizeof(edge) + max_edge_str_size));
+
+        {
+          std::vector<edge> edges = gen_rmat_range(index_from, index_to,
+                                                   n, a, b, c, seed);
+
+          std::stringstream ss;
+          for (const auto& e : edges) {
+            ss << e << std::endl;
+          }
+
+          queue.push(std::make_pair(n_edges, std::move(ss)));
         }
 
-        queue.push(std::move(ss));
+        mem_bounder.release(n_edges * sizeof(edge));
       }
     });
   }
@@ -171,8 +216,13 @@ void gen_rmat_parallel(uint64_t n, uint64_t m, double a, double b, double c, uin
   }
 
   for (uint64_t i = 0; i < n_chunks; i++) {
-    std::stringstream ss = queue.pop();
-    out_stream << ss.rdbuf();
+    uint64_t n_edges;
+    {
+      auto [ne, ss] = queue.pop();
+      out_stream << ss.rdbuf();
+      n_edges = ne;
+    }
+    mem_bounder.release(n_edges * max_edge_str_size);
 
     if (i % (n_chunks / 100 + 1) == 0) {
       print_progress(static_cast<double>(i) / n_chunks);
