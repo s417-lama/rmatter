@@ -96,6 +96,14 @@ private:
   std::condition_variable cond_;
 };
 
+std::size_t max_edge_str_size(uint64_t n) {
+  int n_vertex_digits = 0;
+  for (uint64_t ni = n; ni > 0; ni /= 10) {
+    n_vertex_digits++;
+  }
+  return (n_vertex_digits * 2 + 2) * sizeof(char);
+}
+
 void print_progress(double percent) {
   const char* bar_str = "||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||";
   int bar_width = std::strlen(bar_str);
@@ -161,16 +169,11 @@ void gen_rmat_parallel(uint64_t n, uint64_t m, double a, double b, double c, uin
   concurrent_queue<std::pair<uint64_t, std::stringstream>> queue;
   memory_usage_bounder mem_bounder(mem_bound);
 
-  int n_vertex_digits = 0;
-  for (uint64_t ni = n; ni > 0; ni /= 10) {
-    n_vertex_digits++;
-  }
-
-  std::size_t max_edge_str_size = (n_vertex_digits * 2 + 2) * sizeof(char);
+  std::size_t edge_str_size = max_edge_str_size(n);
 
   uint64_t chunk_edge_count =
     std::max(1ul, std::min(m / (n_threads * 8),
-                           mem_bound / (n_threads * (sizeof(edge) + max_edge_str_size))));
+                           mem_bound / (n_threads * (sizeof(edge) + edge_str_size))));
 
   std::cout << "Chunk size: " << chunk_edge_count << " edges" << std::endl;
 
@@ -189,7 +192,7 @@ void gen_rmat_parallel(uint64_t n, uint64_t m, double a, double b, double c, uin
 
         uint64_t n_edges = index_to - index_from;
 
-        mem_bounder.acquire(n_edges * (sizeof(edge) + max_edge_str_size));
+        mem_bounder.acquire(n_edges * (sizeof(edge) + edge_str_size));
 
         {
           std::vector<edge> edges = gen_rmat_range(index_from, index_to,
@@ -222,7 +225,7 @@ void gen_rmat_parallel(uint64_t n, uint64_t m, double a, double b, double c, uin
       out_stream << ss.rdbuf();
       n_edges = ne;
     }
-    mem_bounder.release(n_edges * max_edge_str_size);
+    mem_bounder.release(n_edges * edge_str_size);
 
     if (i % (n_chunks / 100 + 1) == 0) {
       print_progress(static_cast<double>(i) / n_chunks);
@@ -337,10 +340,12 @@ int main(int argc, char** argv) {
             << "c = " << c << ", "
             << "d = " << 1.0 - a - b - c << std::endl;
   std::cout << "Random seed: " << seed << std::endl;
+  std::cout << "Estimated file size: " << static_cast<double>(max_edge_str_size(n)) * m / (1 << 30) << " GB" << std::endl;
   std::cout << n_threads << " threads will be spawned." << std::endl;
-  std::cout << static_cast<double>(mem_bound) / (1 << 30) << " GB of memory will be used." << std::endl;
+  std::cout << static_cast<double>(mem_bound) / (1 << 30) << " GB of RAM will be used." << std::endl;
 
   gen_rmat_parallel(n, m, a, b, c, seed, n_threads, mem_bound, output_filename);
 
   std::cout << "Done." << std::endl;
+  std::cout << "The generated graph has successfully been written to: " << output_filename << std::endl;
 }
