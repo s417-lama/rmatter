@@ -1,12 +1,11 @@
 CXX = g++
-CXXFLAGS = -O3 -Wall -Wextra -std=c++17
-TARGET = rmatter
-SRC = rmatter.cpp
+CXXFLAGS = -O3 -Wall -Wextra -std=c++20
+TARGETS = rmatter converter
 
-all: $(TARGET)
+all: $(TARGETS)
 
-$(TARGET): $(SRC)
-	$(CXX) $(CXXFLAGS) -o $(TARGET) -I./pcg-cpp/include $(SRC) -lpthread
+%: %.cpp common.hpp
+	$(CXX) $(CXXFLAGS) -o $@ -I./pcg-cpp/include $< -lpthread
 
 clean:
 	rm -f $(TARGET)

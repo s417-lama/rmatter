@@ -13,12 +13,16 @@ Rmatter generates an [R-MAT graph](https://www.cs.cmu.edu/~christos/PUBLICATIONS
 
 ## Usage
 
+A compiler with C++20 support is required.
+
 Clone and compile:
 ```sh
 git clone https://github.com/s417-lama/rmatter.git
 cd rmatter/
 make
 ```
+
+By default, `g++` is used for compilation (change `Makefile` if needed).
 
 Generate an R-MAT20 graph (N=2^20, M=2^24) and save it as `rmat20.txt`:
 ```sh
@@ -32,7 +36,7 @@ Parameters: a = 0.57, b = 0.19, c = 0.19, d = 0.05
 Random seed: 0
 Estimated file size: 0.25 GB
 12 threads will be spawned.
-14.8448 GB of RAM will be used.
+14.8448 GB of RAM will be used at maximum.
 Chunk size: 174762 edges
 Number of chunks: 97
 [||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||] 100%
@@ -86,6 +90,13 @@ python3 show_adj_matrix.py rmat20.txt
 ```
 
 ![](images/rmat20.svg)
+
+## Graph Format Conversion
+
+Binary edge list format for [Gemini](https://github.com/thu-pacman/GeminiGraph) graph processing framework:
+```sh
+./converter -i out.txt -o out.binedgelist
+```
 
 ## References
 
