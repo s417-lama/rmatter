@@ -119,7 +119,7 @@ void gen_rmat_parallel(uint64_t n, uint64_t m, double a, double b, double c, uin
 
   std::ofstream out_stream(output_filename);
   if (!out_stream) {
-    std::cerr << "Failed to open file: " << output_filename << std::endl;
+    std::cerr << "Error: Failed to open file: " << output_filename << std::endl;
     std::cerr << std::strerror(errno) << std::endl;
     exit(1);
   }
@@ -210,27 +210,27 @@ int main(int argc, char** argv) {
   }
 
   if (n == 0 || m == 0) {
-    std::cerr << "Please specify n and m." << std::endl;
+    std::cerr << "Error: Please specify n and m." << std::endl;
     show_help_and_exit(argc, argv);
   }
 
   if (n == 0 || m == 0) {
-    std::cerr << "Please specify n and m." << std::endl;
+    std::cerr << "Error: Please specify n and m." << std::endl;
     show_help_and_exit(argc, argv);
   }
 
   if (n & (n - 1)) {
-    std::cerr << "n must be a power of two." << std::endl;
+    std::cerr << "Error: n must be a power of two." << std::endl;
     exit(1);
   }
 
   if (a < 0 || b < 0 || c < 0) {
-    std::cerr << "a, b, and c cannot be negative values." << std::endl;
+    std::cerr << "Error: a, b, and c cannot be negative values." << std::endl;
     exit(1);
   }
 
   if (a + b + c > 1.0) {
-    std::cerr << "a + b + c cannot be larger than 1.0." << std::endl;
+    std::cerr << "Error: a + b + c cannot be larger than 1.0." << std::endl;
     exit(1);
   }
 

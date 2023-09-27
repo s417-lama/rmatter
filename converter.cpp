@@ -21,7 +21,7 @@ std::istream& operator>>(std::istream& stream, edge<VertexID>& e) {
   stream >> src >> dst;
   if (src > std::numeric_limits<VertexID>::max() ||
       dst > std::numeric_limits<VertexID>::max()) {
-    std::cerr << "Integer type of vertex ID seems too small." << std::endl;
+    std::cerr << "Error: Integer type of vertex ID is too small." << std::endl;
     exit(1);
   }
   e.src = src;
@@ -54,12 +54,12 @@ void graph_convert_parallel(std::string input_format, std::string output_format,
   std::error_code ec;
   std::size_t input_data_size = std::filesystem::file_size(input_filename, ec);
   if (ec) {
-    std::cout << "This input file error: " << ec.message() << std::endl;
+    std::cout << "Input file error: " << ec.message() << std::endl;
     exit(1);
   }
 
   if (input_data_size == 0) {
-    std::cerr << "The input file is empty." << std::endl;
+    std::cerr << "Error: The input file is empty." << std::endl;
     exit(1);
   }
 
@@ -108,14 +108,14 @@ void graph_convert_parallel(std::string input_format, std::string output_format,
 
   std::ifstream in_stream(input_filename);
   if (!in_stream) {
-    std::cerr << "Failed to open file: " << input_filename << std::endl;
+    std::cerr << "Error: Failed to open file: " << input_filename << std::endl;
     std::cerr << std::strerror(errno) << std::endl;
     exit(1);
   }
 
   std::ofstream out_stream(output_filename, std::ios::binary);
   if (!out_stream) {
-    std::cerr << "Failed to open file: " << output_filename << std::endl;
+    std::cerr << "Error: Failed to open file: " << output_filename << std::endl;
     std::cerr << std::strerror(errno) << std::endl;
     exit(1);
   }
@@ -152,7 +152,7 @@ void graph_convert_parallel(std::string input_format, std::string output_format,
         }
 
         if (str_len == 0) {
-          std::cerr << "Something went wrong." << std::endl;
+          std::cerr << "Error: Something went wrong." << std::endl;
           exit(1);
         }
 
@@ -214,7 +214,7 @@ void show_help_and_exit(int, char** argv) {
                   "  options:\n"
                   "    -i : Input filename\n"
                   "    -o : Output filename\n"
-                  "    -f : File format of input (edgelist,txt)\n"
+                  "    -f : File format of input (edgelist/txt)\n"
                   "    -g : File format of output (binedgelist)\n"
                   "    -l : Integer type of vertex ID (u32/u64)\n"
                   "    -t : Number of threads\n"
@@ -266,13 +266,18 @@ int main(int argc, char** argv) {
   }
 
   if (input_filename.empty()) {
-    std::cerr << "Please specify the input file path (-i)." << std::endl;
+    std::cerr << "Error: Please specify the input file path (-i)." << std::endl;
     show_help_and_exit(argc, argv);
   }
 
   if (output_filename.empty()) {
-    std::cerr << "Please specify the output file path (-o)." << std::endl;
+    std::cerr << "Error: Please specify the output file path (-o)." << std::endl;
     show_help_and_exit(argc, argv);
+  }
+
+  if (input_filename == output_filename) {
+    std::cerr << "Error: The same file cannot be specified for input/output files." << std::endl;
+    exit(1);
   }
 
   if (input_format.empty() && input_filename.has_extension()) {
@@ -286,7 +291,7 @@ int main(int argc, char** argv) {
 
   if (input_format.empty() ||
       input_format != "edgelist") {
-    std::cerr << "Only 'edgelist' or 'txt' format is supported for input." << std::endl;
+    std::cerr << "Error: Only 'edgelist' or 'txt' format is supported for input." << std::endl;
     show_help_and_exit(argc, argv);
   }
 
@@ -296,14 +301,14 @@ int main(int argc, char** argv) {
 
   if (output_format.empty() ||
       output_format != "binedgelist") {
-    std::cerr << "Only 'binedgelist' is supported for output." << std::endl;
+    std::cerr << "Error: Only 'binedgelist' is supported for output." << std::endl;
     show_help_and_exit(argc, argv);
   }
 
   std::size_t total_mem_size = get_available_memory_size();
   std::size_t mem_bound = static_cast<std::size_t>(total_mem_size * mem_space_frac);
 
-  std::cout << "Convert from '" << input_format << "' format to '" << output_format << "' format." << std::endl;
+  std::cout << "Converting from '" << input_format << "' format to '" << output_format << "' format..." << std::endl;
   std::cout << "Input file: " << input_filename << std::endl;
   std::cout << "Output file: " << output_filename << std::endl;
   std::cout << n_threads << " threads will be spawned." << std::endl;
@@ -314,7 +319,7 @@ int main(int argc, char** argv) {
   } else if (vertex_id_type == "u64") {
     graph_convert_parallel<uint64_t>(input_format, output_format, n_threads, mem_bound, input_filename, output_filename);
   } else {
-    std::cerr << "Please specify u32/u64 for the integer type for vertex IDs (-l)." << std::endl;
+    std::cerr << "Error: Please specify u32/u64 for the integer type for vertex IDs (-l)." << std::endl;
     exit(1);
   }
 
