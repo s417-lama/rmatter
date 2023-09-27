@@ -324,6 +324,6 @@ int main(int argc, char** argv) {
   }
 
   std::cout << "Done." << std::endl;
-  std::cout << "The generated graph has successfully been written to: " << output_filename << std::endl;
+  std::cout << "The converted file has successfully been written to: " << output_filename << std::endl;
 }
 
